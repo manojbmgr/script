@@ -6,22 +6,24 @@
 # Configures: streams.bmdigital.in with logging
 # --------------------------------------------
 
-# Print commands and continue on errors
-set -x
+# Enable error handling and logging
+set -ex
+LOG_FILE="/var/log/setup.log"
+exec > >(tee -a "$LOG_FILE") 2>&1
 
 # ===== 1. System Update =====
-sudo apt update -y || echo "APT update failed - continuing..."
-sudo apt upgrade -y || echo "APT upgrade failed - continuing..."
+export DEBIAN_FRONTEND=noninteractive
+sudo apt update -y
+sudo apt upgrade -y
 
 # ===== 2. Install and Secure SSH Server =====
-{
-    sudo apt install -y openssh-server || echo "SSH install failed - continuing..."
-    
-    # Backup original config
-    sudo cp /etc/ssh/sshd_config /etc/ssh/sshd_config.bak 2>/dev/null || true
-    
-    # Configure secure SSH
-    sudo tee /etc/ssh/sshd_config >/dev/null <<EOF
+sudo apt install -y openssh-server
+
+# Backup original config
+sudo cp /etc/ssh/sshd_config /etc/ssh/sshd_config.bak
+
+# Configure secure SSH
+sudo tee /etc/ssh/sshd_config > /dev/null <<EOF
 Port 22
 Protocol 2
 HostKey /etc/ssh/ssh_host_ed25519_key
@@ -43,58 +45,48 @@ PrintMotd no
 AcceptEnv LANG LC_*
 Subsystem sftp /usr/lib/openssh/sftp-server
 EOF
-    
-    # Handle different SSH service names
-    if systemctl list-unit-files | grep -q ssh.service; then
-        sudo systemctl restart ssh || echo "SSH restart failed - continuing..."
-    elif systemctl list-unit-files | grep -q sshd.service; then
-        sudo systemctl restart sshd || echo "SSHD restart failed - continuing..."
-    fi
-} >/dev/null 2>&1
+
+# Restart SSH service
+sudo systemctl restart ssh || sudo systemctl restart sshd
 
 # ===== 3. Install FFmpeg =====
-{
-    sudo apt install -y software-properties-common || true
-    sudo add-apt-repository universe -y || true
-    sudo apt update -y || true
-    sudo apt install -y ffmpeg || echo "FFmpeg install failed - continuing..."
-    ffmpeg -version | head -n 1 || true
-} >/dev/null 2>&1
+sudo apt install -y software-properties-common
+sudo add-apt-repository universe -y
+sudo apt update -y
+sudo apt install -y ffmpeg
+
+# Verify installation
+ffmpeg -version | head -n 1
 
 # ===== 4. Install Nginx =====
-{
-    sudo apt install -y nginx || echo "Nginx install failed - continuing..."
-    sudo systemctl enable nginx || true
-    sudo systemctl start nginx || true
-} >/dev/null 2>&1
+sudo apt install -y nginx
+sudo systemctl enable nginx
+sudo systemctl start nginx
 
 # ===== 5. Install Node.js (LTS) =====
-{
-    curl -fsSL https://deb.nodesource.com/setup_lts.x | sudo -E bash - || true
-    sudo apt install -y nodejs || echo "Node.js install failed - continuing..."
-    sudo npm install -g pm2 || true
-} >/dev/null 2>&1
+curl -fsSL https://deb.nodesource.com/setup_lts.x | sudo -E bash -
+sudo apt install -y nodejs
+sudo npm install -g pm2
 
 # ===== 6. Configure Domain =====
 DOMAIN="streams.bmdigital.in"
 WEB_ROOT="/var/www/$DOMAIN"
 FTP_USER="streams_ftp"
-FTP_PASS=$(tr -dc A-Za-z0-9 </dev/urandom | head -c 16)
+FTP_PASS=$(openssl rand -base64 12)
 SSH_USER="streams_admin"
-SSH_PASS=$(tr -dc A-Za-z0-9 </dev/urandom | head -c 16)
+SSH_PASS=$(openssl rand -base64 12)
 
-{
-    # Create system user for SSH/SFTP
-    sudo useradd -m -d $WEB_ROOT -s /bin/bash $SSH_USER 2>/dev/null || true
-    echo "$SSH_USER:$SSH_PASS" | sudo chpasswd || true
-    
-    # Create site directory
-    sudo mkdir -p $WEB_ROOT || true
-    sudo chown -R $SSH_USER:$SSH_USER $WEB_ROOT || true
-    sudo chmod -R 755 $WEB_ROOT || true
-    
-    # Create sample index.html
-    sudo tee $WEB_ROOT/index.html >/dev/null <<EOF
+# Create system user for SSH/SFTP
+sudo useradd -m -d $WEB_ROOT -s /bin/bash $SSH_USER
+echo "$SSH_USER:$SSH_PASS" | sudo chpasswd
+
+# Create site directory
+sudo mkdir -p $WEB_ROOT
+sudo chown -R $SSH_USER:$SSH_USER $WEB_ROOT
+sudo chmod -R 755 $WEB_ROOT
+
+# Create sample index.html
+sudo tee $WEB_ROOT/index.html > /dev/null <<EOF
 <!DOCTYPE html>
 <html>
 <head>
@@ -104,17 +96,15 @@ SSH_PASS=$(tr -dc A-Za-z0-9 </dev/urandom | head -c 16)
     <h1>Success! $DOMAIN is working!</h1>
     <p>FTP User: $FTP_USER</p>
     <p>SSH/SFTP User: $SSH_USER</p>
-    <p>FFmpeg Version: $(ffmpeg -version | head -n 1 | awk '{print $3}' 2>/dev/null || echo "Not installed")</p>
+    <p>FFmpeg Version: $(ffmpeg -version | head -n 1 | awk '{print $3}')</p>
 </body>
 </html>
 EOF
-} >/dev/null 2>&1
 
 # ===== 7. Nginx Configuration =====
 CONFIG_FILE="/etc/nginx/sites-available/$DOMAIN"
 
-{
-    sudo tee $CONFIG_FILE >/dev/null <<EOF
+sudo tee $CONFIG_FILE > /dev/null <<EOF
 server {
     listen 80;
     server_name $DOMAIN www.$DOMAIN;
@@ -130,21 +120,20 @@ server {
     }
 }
 EOF
-    
-    sudo ln -sf $CONFIG_FILE /etc/nginx/sites-enabled/ || true
-    sudo nginx -t && sudo systemctl reload nginx || true
-} >/dev/null 2>&1
+
+# Enable the site
+sudo ln -sf $CONFIG_FILE /etc/nginx/sites-enabled/
+sudo nginx -t && sudo systemctl reload nginx
 
 # ===== 8. Install SSL (Let's Encrypt) =====
-{
-    sudo apt install -y certbot python3-certbot-nginx || true
-    sudo certbot --nginx -d $DOMAIN -d www.$DOMAIN --non-interactive --agree-tos --email admin@bmdigital.in || true
-    (crontab -l 2>/dev/null; echo "0 3 * * * /usr/bin/certbot renew --quiet") | crontab - || true
-} >/dev/null 2>&1
+sudo apt install -y certbot python3-certbot-nginx
+sudo certbot --nginx -d $DOMAIN -d www.$DOMAIN --non-interactive --agree-tos --email admin@bmdigital.in
+
+# Auto-renewal setup
+(crontab -l 2>/dev/null; echo "0 3 * * * /usr/bin/certbot renew --quiet") | crontab -
 
 # ===== 9. Configure Log Rotation =====
-{
-    sudo tee /etc/logrotate.d/nginx-custom >/dev/null <<EOF
+sudo tee /etc/logrotate.d/nginx-custom > /dev/null <<EOF
 /var/log/nginx/*.log {
     daily
     missingok
@@ -159,17 +148,15 @@ EOF
     endscript
 }
 EOF
-} >/dev/null 2>&1
 
 # ===== 10. FTP Server Setup =====
-{
-    sudo apt install -y vsftpd || true
-    
-    # Backup original config
-    sudo cp /etc/vsftpd.conf /etc/vsftpd.conf.bak 2>/dev/null || true
-    
-    # Configure vsftpd
-    sudo tee /etc/vsftpd.conf >/dev/null <<EOF
+sudo apt install -y vsftpd
+
+# Backup original config
+sudo cp /etc/vsftpd.conf /etc/vsftpd.conf.bak
+
+# Configure vsftpd
+sudo tee /etc/vsftpd.conf > /dev/null <<EOF
 listen=YES
 anonymous_enable=NO
 local_enable=YES
@@ -188,49 +175,47 @@ userlist_enable=YES
 userlist_file=/etc/vsftpd.userlist
 userlist_deny=NO
 EOF
-    
-    sudo useradd -m -d $WEB_ROOT -s /bin/bash $FTP_USER 2>/dev/null || true
-    echo "$FTP_USER:$FTP_PASS" | sudo chpasswd || true
-    echo "$FTP_USER" | sudo tee -a /etc/vsftpd.userlist >/dev/null || true
-    sudo systemctl restart vsftpd || true
-} >/dev/null 2>&1
+
+# Create FTP user
+sudo useradd -m -d $WEB_ROOT -s /bin/bash $FTP_USER
+echo "$FTP_USER:$FTP_PASS" | sudo chpasswd
+echo "$FTP_USER" | sudo tee -a /etc/vsftpd.userlist
+
+# Restart FTP service
+sudo systemctl restart vsftpd
 
 # ===== 11. Firewall Configuration =====
-{
-    sudo ufw allow 'Nginx Full' || true
-    sudo ufw allow 'OpenSSH' || true
-    sudo ufw allow 21/tcp || true  # FTP
-    sudo ufw allow 20/tcp || true  # FTP data
-    sudo ufw allow 990/tcp || true  # FTP SSL
-    sudo ufw allow 40000:45000/tcp || true  # Passive FTP ports
-    sudo ufw allow 8000:8100/tcp || true  # Custom port range
-    echo "y" | sudo ufw enable || true
-} >/dev/null 2>&1
+sudo ufw allow 'Nginx Full'
+sudo ufw allow 'OpenSSH'
+sudo ufw allow 21/tcp  # FTP
+sudo ufw allow 20/tcp  # FTP data
+sudo ufw allow 990/tcp  # FTP SSL
+sudo ufw allow 40000:45000/tcp  # Passive FTP ports
+sudo ufw allow 8000:8100/tcp  # Custom port range
+echo "y" | sudo ufw enable
 
 # ===== 12. Verify FFmpeg =====
-{
-    echo "Testing FFmpeg installation..."
-    ffmpeg -hide_banner -f lavfi -i sine=frequency=1000:duration=5 -c:a libmp3lame test.mp3 2>/dev/null && {
-        echo "FFmpeg test successful - audio file created"
-        rm test.mp3 2>/dev/null || true
-    } || echo "FFmpeg test failed or not installed"
-} >/dev/null 2>&1
+echo "Testing FFmpeg installation..."
+ffmpeg -hide_banner -f lavfi -i sine=frequency=1000:duration=5 -c:a libmp3lame test.mp3 && {
+    echo "FFmpeg test successful - audio file created"
+    rm test.mp3
+} || echo "FFmpeg test failed or not installed"
 
 # ===== 13. Final Output =====
 echo "=========================================="
-echo " Setup Complete (Partial failures ignored) "
+echo " Setup Complete! "
 echo "=========================================="
 echo " Domain: https://$DOMAIN"
 echo " Web Root: $WEB_ROOT"
-[ -n "$SSH_USER" ] && echo " SSH/SFTP User: $SSH_USER"
-[ -n "$SSH_PASS" ] && echo " SSH Pass: $SSH_PASS"
-[ -n "$FTP_USER" ] && echo " FTP User: $FTP_USER"
-[ -n "$FTP_PASS" ] && echo " FTP Pass: $FTP_PASS"
-echo " FFmpeg Version: $(ffmpeg -version | head -n 1 | awk '{print $3}' 2>/dev/null || echo "Not installed")"
-echo " Node.js: $(node -v 2>/dev/null || echo "Not installed")"
-echo " NPM: $(npm -v 2>/dev/null || echo "Not installed")"
+echo " SSH/SFTP User: $SSH_USER"
+echo " SSH Pass: $SSH_PASS"
+echo " FTP User: $FTP_USER"
+echo " FTP Pass: $FTP_PASS"
+echo " FFmpeg Version: $(ffmpeg -version | head -n 1 | awk '{print $3}')"
+echo " Node.js: $(node -v)"
+echo " NPM: $(npm -v)"
 echo " Open Ports: 21,22,8000-8100,40000-45000"
 echo "=========================================="
-PUBLIC_IP=$(curl -s ifconfig.me || echo "unknown")
-[ -n "$SSH_USER" ] && echo " SSH Access: ssh $SSH_USER@$PUBLIC_IP"
+PUBLIC_IP=$(curl -s https://api64.ipify.org || echo "unknown")
+echo " SSH Access: ssh $SSH_USER@$PUBLIC_IP"
 echo "=========================================="
