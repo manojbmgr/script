@@ -3,7 +3,7 @@
 # --------------------------------------------
 # Ubuntu Server Setup Script
 # Installs: SSH, Nginx, Node.js, SSL, FTP, FFmpeg
-# Configures: streams.bmdigital.in with logging
+# Configures: streams.bmgdigital.in with logging
 # --------------------------------------------
 
 # Enable error handling and logging
