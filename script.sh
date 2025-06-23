@@ -107,7 +107,7 @@ CONFIG_FILE="/etc/nginx/sites-available/$DOMAIN"
 sudo tee $CONFIG_FILE > /dev/null <<EOF
 server {
     listen 80;
-    server_name $DOMAIN www.$DOMAIN;
+    server_name $DOMAIN;
 
     access_log /var/log/nginx/$DOMAIN.access.log;
     error_log /var/log/nginx/$DOMAIN.error.log;
@@ -127,7 +127,9 @@ sudo nginx -t && sudo systemctl reload nginx
 
 # ===== 8. Install SSL (Let's Encrypt) =====
 sudo apt install -y certbot python3-certbot-nginx
-sudo certbot --nginx -d $DOMAIN -d www.$DOMAIN --non-interactive --agree-tos --email admin@bmdigital.in
+
+# Request SSL certificate (without stopping script if it fails)
+sudo certbot --nginx -d $DOMAIN --non-interactive --agree-tos --email admin@bmdigital.in || echo "⚠️ Certbot failed, continuing..."
 
 # Auto-renewal setup
 (crontab -l 2>/dev/null; echo "0 3 * * * /usr/bin/certbot renew --quiet") | crontab -
