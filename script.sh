@@ -20,7 +20,9 @@ sudo apt upgrade -y
 sudo apt install -y openssh-server
 
 # Backup original config
-sudo cp /etc/ssh/sshd_config /etc/ssh/sshd_config.bak
+if [ ! -f /etc/ssh/sshd_config.bak ]; then
+    sudo cp /etc/ssh/sshd_config /etc/ssh/sshd_config.bak
+fi
 
 # Configure secure SSH
 sudo tee /etc/ssh/sshd_config > /dev/null <<EOF
@@ -76,14 +78,18 @@ FTP_PASS=$(openssl rand -base64 12)
 SSH_USER="streams_admin"
 SSH_PASS=$(openssl rand -base64 12)
 
-# Create system user for SSH/SFTP
-sudo useradd -m -d $WEB_ROOT -s /bin/bash $SSH_USER
-echo "$SSH_USER:$SSH_PASS" | sudo chpasswd
+# Create system user for SSH/SFTP if it doesn't exist
+if ! id "$SSH_USER" &>/dev/null; then
+    sudo useradd -m -d $WEB_ROOT -s /bin/bash $SSH_USER
+    echo "$SSH_USER:$SSH_PASS" | sudo chpasswd
+fi
 
-# Create site directory
-sudo mkdir -p $WEB_ROOT
-sudo chown -R $SSH_USER:$SSH_USER $WEB_ROOT
-sudo chmod -R 755 $WEB_ROOT
+# Create site directory if it doesn't exist
+if [ ! -d "$WEB_ROOT" ]; then
+    sudo mkdir -p $WEB_ROOT
+    sudo chown -R $SSH_USER:$SSH_USER $WEB_ROOT
+    sudo chmod -R 755 $WEB_ROOT
+fi
 
 # Create sample index.html
 sudo tee $WEB_ROOT/index.html > /dev/null <<EOF
@@ -104,7 +110,8 @@ EOF
 # ===== 7. Nginx Configuration =====
 CONFIG_FILE="/etc/nginx/sites-available/$DOMAIN"
 
-sudo tee $CONFIG_FILE > /dev/null <<EOF
+if [ ! -f "$CONFIG_FILE" ]; then
+    sudo tee $CONFIG_FILE > /dev/null <<EOF
 server {
     listen 80;
     server_name $DOMAIN;
@@ -121,9 +128,9 @@ server {
 }
 EOF
 
-# Enable the site
-sudo ln -sf $CONFIG_FILE /etc/nginx/sites-enabled/
-sudo nginx -t && sudo systemctl reload nginx
+    sudo ln -sf $CONFIG_FILE /etc/nginx/sites-enabled/
+    sudo nginx -t && sudo systemctl reload nginx
+fi
 
 # ===== 8. Install SSL (Let's Encrypt) =====
 sudo apt install -y certbot python3-certbot-nginx
@@ -155,7 +162,9 @@ EOF
 sudo apt install -y vsftpd
 
 # Backup original config
-sudo cp /etc/vsftpd.conf /etc/vsftpd.conf.bak
+if [ ! -f /etc/vsftpd.conf.bak ]; then
+    sudo cp /etc/vsftpd.conf /etc/vsftpd.conf.bak
+fi
 
 # Configure vsftpd
 sudo tee /etc/vsftpd.conf > /dev/null <<EOF
@@ -178,10 +187,12 @@ userlist_file=/etc/vsftpd.userlist
 userlist_deny=NO
 EOF
 
-# Create FTP user
-sudo useradd -m -d $WEB_ROOT -s /bin/bash $FTP_USER
-echo "$FTP_USER:$FTP_PASS" | sudo chpasswd
-echo "$FTP_USER" | sudo tee -a /etc/vsftpd.userlist
+# Create FTP user if it doesn't exist
+if ! id "$FTP_USER" &>/dev/null; then
+    sudo useradd -m -d $WEB_ROOT -s /bin/bash $FTP_USER
+    echo "$FTP_USER:$FTP_PASS" | sudo chpasswd
+    echo "$FTP_USER" | sudo tee -a /etc/vsftpd.userlist
+fi
 
 # Restart FTP service
 sudo systemctl restart vsftpd
@@ -210,9 +221,7 @@ echo "=========================================="
 echo " Domain: https://$DOMAIN"
 echo " Web Root: $WEB_ROOT"
 echo " SSH/SFTP User: $SSH_USER"
-echo " SSH Pass: $SSH_PASS"
 echo " FTP User: $FTP_USER"
-echo " FTP Pass: $FTP_PASS"
 echo " FFmpeg Version: $(ffmpeg -version | head -n 1 | awk '{print $3}')"
 echo " Node.js: $(node -v)"
 echo " NPM: $(npm -v)"
