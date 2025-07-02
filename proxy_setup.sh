@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # ➤ Usage:
-# wget -O setup.sh https://your-repo-link.com/proxy_setup.sh
+# wget -O setup.sh https://raw.githubusercontent.com/manojbmgr/script/refs/heads/main/proxy_setup.sh
 # chmod +x setup.sh
 # sudo ./setup.sh livestream.bmgdigital.in 127.0.0.1:81 admin@bmgdigital.in
 
