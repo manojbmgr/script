@@ -1,8 +1,10 @@
 #!/bin/bash
 
 # Optimized Nginx Reverse Proxy Setup with SSL
-# Usage: setup-reverse-proxy.sh <domain> <upstream> <email>
-# Example: setup-reverse-proxy.sh livestream.bmgdigital.in 127.0.0.1:81 admin@bmgdigital.in
+# wget -O setup.sh https://raw.githubusercontent.com/manojbmgr/script/refs/heads/main/proxy_setup.sh
+# chmod +x setup.sh
+# sudo ./setup.sh livestream.bmgdigital.in 127.0.0.1:81 admin@bmgdigital.in
+
 
 # Exit on error
 set -e
