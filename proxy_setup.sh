@@ -92,7 +92,7 @@ server {
 
     # Hotlink protection for HLS playlist
     location ~ \.m3u8\$ {
-        valid_referers none blocked radioindialive.com *.radioindialive.com vividhbharati.in *.vividhbharati.in;
+        valid_referers none blocked radioindialive.com *.radioindialive.com vividhbharati.in *.vividhbharati.in livestream.bmgdigital.in *.livestream.bmgdigital.in;
         if (\$invalid_referer) {
             return 403;
         }
@@ -101,7 +101,7 @@ server {
 
     # Optional: Protect .ts video chunks
     location ~ \.ts\$ {
-        valid_referers none blocked radioindialive.com *.radioindialive.com vividhbharati.in *.vividhbharati.in;
+        valid_referers none blocked radioindialive.com *.radioindialive.com vividhbharati.in *.vividhbharati.in livestream.bmgdigital.in *.livestream.bmgdigital.in;
         if (\$invalid_referer) {
             return 403;
         }
