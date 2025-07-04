@@ -46,7 +46,7 @@ ufw allow OpenSSH
 ufw --force enable
 echo "➤ Allowing ports 8000–8500 via UFW..."
 ufw allow 8000:8500/tcp
-eco "➤ reloading (UFW)..."
+echo "➤ reloading (UFW)..."
 ufw reload
 
 # ───────────────────────────────────────────────────────────────
